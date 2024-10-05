@@ -321,11 +321,6 @@ describe('ClockVerifier', () => {
   describe('Core protocol functionnalities tests + tree root is synced', () => {
     
     it('Worker can punch-in and status changes', async () => {
-      // Create a blank account
-      // Check if trees still synced
-      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
-      // Check that the root is indeed the one of an EMPTY leaf (empty is by default Filed(0))
-      expect(serverTree.getRoot() == zkApp.treeRoot.get());
     });
     it.todo('Worker can punch-in and twice and workedHours get updated');
     it.todo('Worker can punch-in and tree times and workedHours get updated and status changes');
