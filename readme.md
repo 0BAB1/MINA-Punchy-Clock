@@ -1,5 +1,7 @@
 # PUNCHY : The privacy-driven punch clock solution
 
+## Overview
+
 Punchy is a punch clock solution based on the Mina blockchain and o1js framework by empowering MerkleTrees.
 
 Punch clocks can be the source of problems when it come to everyday office life, from the worker
@@ -25,8 +27,14 @@ Punchy aims at implementing the punch clock system unsing the Mina blockchain as
 - Allow employers to check on the employee worker hours at any time with complete trust.
 - Both the server and the user agrees on transaction by signing the data (prevents cheating and de-sync of the truthy tree)
 
-# The protocol
+## The protocol
 
 Punchy's protocol is describe with more details here : [Contracts README file](./contracts/README.md). Here is a broad overview of how the protocol handles transaction and ensure the requirements are met :
 
 ![Protocole image](https://image.noelshack.com/fichiers/2024/40/6/1728111893-capture-d-cran-du-2024-10-05-09-04-03.png)
+
+## The oracle
+
+Find the oracle's github [here](https://github.com/0BAB1/punchy-oracle).
+
+It is currently live at [this link](https://punchoracle.netlify.app/.netlify/functions/api).
