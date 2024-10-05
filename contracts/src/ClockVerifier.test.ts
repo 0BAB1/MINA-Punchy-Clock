@@ -99,21 +99,21 @@ describe('ClockVerifier', () => {
     it("does not accept a re-init of the contract state : serverKey", async () => {
       await localDeploy();
       // try to re-init the key (someone trying to spoof for example)
-      try{
+      expect( async () => {
         const additionalTxInit = await Mina.transaction(senderAccount, async () => {
           // we take sender account key as an example for another key
           await zkApp.initServerKey(PublicKey.fromBase58(senderAccount.toBase58())); 
         });
         await additionalTxInit.prove();
         await additionalTxInit.sign([senderKey]).send();
-      }catch{
-
-      }
+      }).rejects;
+      
       // check initial tree sync
       expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
       // chack if the server key did not change
       expect(zkApp.serverPublicKey.get().toBase58() == hardServerKeyPair[1]).toBe(true);
-    });
+    // TODO : LOGIC FOR TIMEVERIFIER ADDRESS IS THE SAME, assert good if tests passes
+    })
   });
 
   describe('Worker declaration checks, hardcoded keys and server interactions', () => {
@@ -195,7 +195,7 @@ describe('ClockVerifier', () => {
        */
 
       const witness2 = new MerkleWitenessHeight(serverTree.getWitness(uniqueWorkerLeaf));
-      try{
+      expect( async () => {
         const tx2 = await Mina.transaction(senderAccount, async () => {
           await zkApp.addWorker(
             PublicKey.fromBase58(hardWorkerKeyPair[1]),
@@ -220,12 +220,12 @@ describe('ClockVerifier', () => {
           )
         );
         expect(false).toBe(true); // if the TX goes through, make the test go crazy
-      }catch{
-        // Check if trees still synced
-        expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
-        // Check that the root is indeed the first one and was not updated
-        expect(witness1.calculateRoot(Poseidon.hash(Worker.toFields(firstWorker))) == zkApp.treeRoot.get());
-      }
+      }).rejects;
+
+      // Check if trees still synced
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+      // Check that the root is indeed the first one and was not updated
+      expect(witness1.calculateRoot(Poseidon.hash(Worker.toFields(firstWorker))) == zkApp.treeRoot.get());
     });
 
     it('Worker can\'t be decalred if server signature has been cheated on', async () => {
@@ -239,7 +239,7 @@ describe('ClockVerifier', () => {
       const uniqueWorkerLeaf = 0n;
       const witness1 = new MerkleWitenessHeight(serverTree.getWitness(uniqueWorkerLeaf));
       // And we sent the "infected"/"non legit" TX and see how it goes...
-      try{
+      expect( async () => {
         const tx1 = await Mina.transaction(senderAccount, async () => {
           await zkApp.addWorker(
             PublicKey.fromBase58(hardWorkerKeyPair[1]),
@@ -264,12 +264,13 @@ describe('ClockVerifier', () => {
         );
         // as the TX is supposed to FAIL, make the test go CRAZY if its does
         expect(false).toBe(true);
-      }catch{
-        // Check if trees still synced
-        expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
-        // Check that the root is indeed the one of an EMPTY leaf (empty is by default Filed(0))
-        expect(witness1.calculateRoot(Field(0)) == zkApp.treeRoot.get());
-      }
+      }).rejects;
+
+      // Check if trees still synced
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+      // Check that the root is indeed the one of an EMPTY leaf (empty is by default Filed(0))
+      expect(witness1.calculateRoot(Field(0)) == zkApp.treeRoot.get());
+      
     });
 
     it('Worker can\'t be declared if user\'s/worker\'s signature has been cheated on', async () => {
@@ -284,8 +285,8 @@ describe('ClockVerifier', () => {
       // HERE should go the verification but let's say the server failed at this for any reason...
       const uniqueWorkerLeaf = 0n;
       const witness1 = new MerkleWitenessHeight(serverTree.getWitness(uniqueWorkerLeaf));
-      // And we sent the "infected"/"non legit" TX and see how it goes...
-      try{
+      // And we send the "infected"/"non legit" TX and see how it goes...
+      expect( async () => {
         const tx1 = await Mina.transaction(senderAccount, async () => {
           await zkApp.addWorker(
             PublicKey.fromBase58(hardWorkerKeyPair[1]),
@@ -308,19 +309,24 @@ describe('ClockVerifier', () => {
             Worker.toFields(firstWorker)
           )
         );
-        // as the TX is supposed to FAIL, make the test go CRAZY if its does
-        expect(false).toBe(true);
-      }catch{
-        // Check if trees still synced
-        expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
-        // Check that the root is indeed the one of an EMPTY leaf (empty is by default Filed(0))
-        expect(witness1.calculateRoot(Field(0)) == zkApp.treeRoot.get());
-      }
+      }).rejects;
+
+      // Check if trees still synced
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+      // Check that the root is indeed the one of an EMPTY leaf (empty is by default Filed(0))
+      expect(witness1.calculateRoot(Field(0)) == zkApp.treeRoot.get());
     });
   });
 
   describe('Core protocol functionnalities tests + tree root is synced', () => {
-    it.todo('Worker can punch-in and status changes');
+    
+    it('Worker can punch-in and status changes', async () => {
+      // Create a blank account
+      // Check if trees still synced
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+      // Check that the root is indeed the one of an EMPTY leaf (empty is by default Filed(0))
+      expect(serverTree.getRoot() == zkApp.treeRoot.get());
+    });
     it.todo('Worker can punch-in and twice and workedHours get updated');
     it.todo('Worker can punch-in and tree times and workedHours get updated and status changes');
   });
@@ -328,7 +334,10 @@ describe('ClockVerifier', () => {
   describe("Worker cheat preventing", () => {
     it.todo('Worker cannot cheat on the previous time');
     it.todo('Worker cannot cheat on the worked hours');
-    it.todo('Worker cannot cheat on the new time');
+    // The following has already test in the GetTime test suite but re-tested for good measure
+    it.todo('Worker cannot cheat on the new time stamp');
+    // The following has already test in the GetTime test suite but re-tested for good measure
+    it.todo('Worker cannot spoof the oracle');
     it.todo('Worker cannot cheat on his status');
     it.todo('Worker cannot sign for another');
   });

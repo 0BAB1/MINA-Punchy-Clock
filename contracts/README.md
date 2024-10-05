@@ -105,10 +105,15 @@ and was never tempered with in other ways than the ones implemented in the contr
 ClockVerifier requires the server to be the one executing the TX to ensure proper sync for a fully
 functionning application.
 
+> Note : ClockVerifier inherits from GetTime's logic to verify the oracle's time stamps on the fly. This allows for better visibility and testing.
+
 ### GetTime
 
 The GetTime contract servers as a verifier for the authenticity of the time stamps provided by the
 Worker through the use of the oracle.
+
+> Note : the oracle public public is hardcoded a a single server is trusted, if you deploy your own oracle, you
+will have to regenerate a key pair and hardcode the public when deploying.
 
 # Commands
 

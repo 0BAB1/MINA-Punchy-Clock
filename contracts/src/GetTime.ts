@@ -16,7 +16,6 @@ const ORACLE_PUBLIC_KEY =
 // https://punchoracle.netlify.app/.netlify/functions/api
 
 export class GetTime extends SmartContract{
-    @state(Field) lastUpdatedTime = State<Field>(); // testing, todo : find a better way or assert OK.
     @state(PublicKey) oraclePublicKey = State<PublicKey>();
 
     init() {
@@ -34,6 +33,5 @@ export class GetTime extends SmartContract{
         const oraclePublicKey = this.oraclePublicKey.getAndRequireEquals();
         const validSignature = oracleSignature.verify(oraclePublicKey, [newTimeFromOracle])
         validSignature.assertTrue();
-        this.lastUpdatedTime.set(newTimeFromOracle); // testing
     }
 }

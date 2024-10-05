@@ -1,4 +1,5 @@
 import {Poseidon, Field, SmartContract, state, State, method, MerkleTree, Struct, PublicKey, Bool,  MerkleWitness, Signature} from 'o1js';
+import { GetTime } from './GetTime';
 
 /**
  * ClockVerifier :
@@ -16,12 +17,29 @@ export class Worker extends Struct({
     currentlyWorking : Field,
     lastSeen : Field
 }){
+    /**
+     * Note that the term "hours" is used for convinience but the
+     * time stamps are expressed as milliseconds.
+     */
     punchIn(
+        newTime : Field, // new time stamp expressed as millisenconds
     ){
+        /**
+         * This method only updates the state but does not run the underlying
+         * contract logi i.e. verifying the time stamp and the authenticity of
+         * the user provided data.
+         */
+        // If the worked was working, update its worked hours
+        if(this.currentlyWorking){
+            this.workedHours = this.workedHours.add(newTime.sub(this.lastSeen))
+        }
+        // invert working status Field value : 1 -> 0 or 0 -> 1
+        this.currentlyWorking = this.currentlyWorking.assertBool().not().toField()
+        this.lastSeen = newTime;
     }
 }
 
-export class ClockVerifier extends SmartContract{
+export class ClockVerifier extends GetTime{
     @state(Field) treeRoot = State<Field>();
     @state(PublicKey) serverPublicKey = State<PublicKey>();
 
@@ -56,7 +74,7 @@ export class ClockVerifier extends SmartContract{
         // Base58 worker's signature of [Field(0)], todo : replace by a common salt
         workerSignature : Signature,
         // Base58 server's signature of [Field(0)], todo : replace by a common salt  
-        serverSignature : Signature     ,
+        serverSignature : Signature,
         // salt : Field
     ){
         /**
@@ -93,6 +111,54 @@ export class ClockVerifier extends SmartContract{
     }
 
     @method async punchIn(
+        // Public input from server DataBase
+        workerPublicKey : PublicKey,
+        workedHours : Field, // ms
+        // Private inputs from the user
+        workingStatus : Field,
+        lastSeen : Field, //ms
+        // Private input time from user, approuved by oracle
+        newTime : Field, //ms
+        oracleSignature : Signature,
+        // Both parties signatures of the newTime stamps
+        workerSignature : Signature,
+        serverSignature : Signature,
+        // Witness for server data to prove authenticity
+        witness : MerkleWitenessHeight
     ){
+        /**
+         * This method verifies that everyone is telling the truth and updates
+         * the truth-holding tree, allowing the server to update its states.
+         * Note that separating the function argument and re-constructing the Worker
+         * Struct in the contract was a choice to put an emphasis on what data is
+         * private and what is note simply by looking at the contract, thus avoiding
+         * confusion.
+         */
+
+        // First of all, check the parties signatures
+        const serverPublicKey = this.serverPublicKey.getAndRequireEquals();
+        const verifyWorkerSignature = workerSignature.verify(workerPublicKey, [newTime]);
+        const verifyServerSignature = serverSignature.verify(serverPublicKey, [newTime]);
+        verifyWorkerSignature.assertTrue();
+        verifyServerSignature.assertTrue();
+
+        // We then look for the authenticity of the oracle time stamp before going any further
+        this.verify(newTime, oracleSignature); // reverts if anything is wrong
+
+        // Then, the contract check for the authenticity of the provided public/private data
+        const currentRoot = this.treeRoot.getAndRequireEquals();
+        const workerState = new Worker({
+            workerPublicKey : workerPublicKey,
+            workedHours : workedHours,
+            currentlyWorking : workingStatus,
+            lastSeen : lastSeen
+        });
+        const witnessRoot = witness.calculateRoot(Poseidon.hash(Worker.toFields(workerState)));
+        witnessRoot.assertEquals(currentRoot);
+
+        // If the status is proven to be legit, we can now update the truthy state root
+        workerState.punchIn(newTime);
+        const newRoot = witness.calculateRoot(Poseidon.hash(Worker.toFields(workerState)));
+        this.treeRoot.set(newRoot);
     }
 }

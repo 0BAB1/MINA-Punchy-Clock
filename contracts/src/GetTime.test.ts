@@ -90,9 +90,6 @@ describe('GetTime', () => {
       });
       await txn.prove();
       await txn.sign([senderKey]).send();
-
-      const newTime = await zkApp.lastUpdatedTime.get()
-      expect(newTime).toEqual(time);
     });
 
     it('throws an error if the signature does not match the time, even by a millisecond', async () => {
@@ -126,9 +123,6 @@ describe('GetTime', () => {
       });
       await txn.prove();
       await txn.sign([senderKey]).send();
-
-      const newTime = await zkApp.lastUpdatedTime.get()
-      expect(newTime).toEqual(time);
     });
   });
 });
