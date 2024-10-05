@@ -32,7 +32,7 @@ export class ClockVerifier extends SmartContract{
         );
         // create a dummy server tree to be replaced once and only once
         // on deployement using initServerKey(key) method
-        this.serverPublicKey.set(PublicKey.fromFields([Field(0),Field(0)])); // DUMMY KEY
+        this.serverPublicKey.set(PublicKey.empty()); // DUMMY KEY
     }
 
     @method async initServerKey(
@@ -44,7 +44,7 @@ export class ClockVerifier extends SmartContract{
          */
         const currentServerPublicKey = this.serverPublicKey.getAndRequireEquals();
         // following check to make sure server key wasn't already set/claimed
-        currentServerPublicKey.assertEquals(PublicKey.fromFields([Field(0),Field(0)])); // DUMMY KEY
+        currentServerPublicKey.assertEquals(PublicKey.empty()); // DUMMY KEY
         // set/claim this contract's server key
         this.serverPublicKey.set(newServerPublicKey);
     }
