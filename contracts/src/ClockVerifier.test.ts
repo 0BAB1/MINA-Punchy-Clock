@@ -499,9 +499,47 @@ describe('ClockVerifier', () => {
           Poseidon.hash(Worker.toFields(updateWorker))
         ).equals(zkApp.treeRoot.get()).toString()
       ).toBe("true");
-    });
 
-    it.todo('Worker can punch-in and tree times and workedHours get updated and status changes');
+      // and then a THIRD TX to verify the provable ifs behavior completely
+      const thirdOracleTimeStamp = Field(1728225355876); // hardcoded values sampled from live oracle api
+      const thirdOracleSignature = Signature.fromBase58("7mXS2PQxvu1vitbn2UVfCxSkZjmx642JsSgHM6SKhui7QRoBaawY6LV3n984WNUnN7QzpoJjuS3MTqCmSHCFy1ZXDwveNvNw");
+      // theorical new time does NOT change !
+      const thirdWorkerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [thirdOracleTimeStamp]);
+      // now to the sever...
+      const thirdServerSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [thirdOracleTimeStamp]);
+      const thirdServerWitness =  new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID));
+      expect(updateWorker.lastSeen.equals(secondOracleTimeStamp).toString()).toBe("true");
+      await punchInTX(
+        updateWorker.workedHours,
+        updateWorker.lastSeen,
+        updateWorker.currentlyWorking,
+        thirdOracleTimeStamp,
+        thirdOracleSignature,
+        thirdWorkerSignature,
+        thirdServerSignature,
+        thirdServerWitness
+      );
+      //Verify the TX passed and data has been applied 
+      updateWorker.punchIn(thirdOracleTimeStamp);
+      expect(updateWorker.workedHours.equals(theoricalNewWorkedTime).toString()).toBe("true");
+      expect(updateWorker.currentlyWorking.equals(Field(1)).toString()).toBe("true");
+      expect(updateWorker.lastSeen.equals(thirdOracleTimeStamp).toString()).toBe("true");
+      expect(updateWorker.workerPublicKey.toBase58() == hardWorkerKeyPair[1]).toBe(true);
+
+      serverTree.setLeaf(
+        DEFAULT_NEW_WORKER_LEAF_ID,
+        Poseidon.hash(Worker.toFields(updateWorker))
+      );
+
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true); // chain and server synced
+      // AND chain data include new worker data
+
+      expect(
+        new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID)).calculateRoot(
+          Poseidon.hash(Worker.toFields(updateWorker))
+        ).equals(zkApp.treeRoot.get()).toString()
+      ).toBe("true");
+    });
     it.todo('Worker can punch-in using actual LIVE ORACLE api calls');
     it.todo('Worker can punch-in twice actual LIVE ORACLE api calls');
   });
