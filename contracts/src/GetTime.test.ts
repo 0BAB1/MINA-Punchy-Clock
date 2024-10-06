@@ -15,6 +15,11 @@ import {
  * Only meant to verify that no one tried to cheat on
  * the clock by getting their data from the common trusted
  * API.
+ * 
+ * Note : ClockVerifier was suppoesed to inherit the GetTime contract's
+ * logic bu did not because of an internal bug. This contract is still
+ * useful on it's own to verify the logic functionality and discriminate
+ * oracle tests, thus making it easier to sport a fault on the oracle side.
  */
 
 interface OracleResponse {
@@ -86,7 +91,7 @@ describe('GetTime', () => {
       );
 
       const txn = await Mina.transaction(senderAccount, async () => {
-        await zkApp.verify(time, signature);
+        await zkApp.verifyOracle(time, signature);
       });
       await txn.prove();
       await txn.sign([senderKey]).send();
@@ -102,7 +107,7 @@ describe('GetTime', () => {
 
       expect(async () => {
         const txn = await Mina.transaction(senderAccount, async () => {
-          await zkApp.verify(time, signature);
+          await zkApp.verifyOracle(time, signature);
         });
       }).rejects;
     });
@@ -119,7 +124,7 @@ describe('GetTime', () => {
       const signature = Signature.fromBase58(data.signature);
 
       const txn = await Mina.transaction(senderAccount, async () => {
-        await zkApp.verify(time, signature);
+        await zkApp.verifyOracle(time, signature);
       });
       await txn.prove();
       await txn.sign([senderKey]).send();

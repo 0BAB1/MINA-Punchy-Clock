@@ -8,9 +8,14 @@ import { method, Field, SmartContract, state, State ,Signature, PublicKey } from
  * An oracle is needed for the different parties to have a
  * standards representation of time and avoid cheating as users
  * could throw in any time as it remains a secret.
+ * 
+ * Note : ClockVerifier was suppoesed to inherit the GetTime contract's
+ * logic bu did not because of an internal bug. This contract is still
+ * useful on it's own to verify the logic functionality and discriminate
+ * oracle tests, thus making it easier to sport a fault on the oracle side.
  */
 
-const ORACLE_PUBLIC_KEY =
+export const ORACLE_PUBLIC_KEY =
   'B62qjrPXot2doFFCpT228TKe6hsfGEUnRmDFoWKFo1ANCHaxtizaWKp';
 
 // https://punchoracle.netlify.app/.netlify/functions/api
@@ -25,7 +30,7 @@ export class GetTime extends SmartContract{
         this.requireSignature();
     }
     
-    @method async verify(
+    @method async verifyOracle(
         newTimeFromOracle : Field,
         oracleSignature: Signature, // Orcale signature
     ) {

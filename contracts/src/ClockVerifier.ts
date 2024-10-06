@@ -1,5 +1,5 @@
-import {Poseidon, Field, SmartContract, state, State, method, MerkleTree, Struct, PublicKey, Bool,  MerkleWitness, Signature} from 'o1js';
-import { GetTime } from './GetTime';
+import {Provable, Poseidon, Field, SmartContract, state, State, method, MerkleTree, Struct, PublicKey, Bool,  MerkleWitness, Signature} from 'o1js';
+import { ORACLE_PUBLIC_KEY } from './GetTime';
 
 /**
  * ClockVerifier :
@@ -21,25 +21,38 @@ export class Worker extends Struct({
      * Note that the term "hours" is used for convinience but the
      * time stamps are expressed as milliseconds.
      */
-    punchIn(
-        newTime : Field, // new time stamp expressed as millisenconds
-    ){
+    punchIn(newTime: Field) {
         /**
          * This method only updates the state but does not run the underlying
-         * contract logi i.e. verifying the time stamp and the authenticity of
+         * contract logic i.e. verifying the time stamp and the authenticity of
          * the user provided data.
          */
-        // If the worked was working, update its worked hours
-        if(this.currentlyWorking){
-            this.workedHours = this.workedHours.add(newTime.sub(this.lastSeen))
-        }
-        // invert working status Field value : 1 -> 0 or 0 -> 1
-        this.currentlyWorking = this.currentlyWorking.assertBool().not().toField()
+
+        // Create the condition for whether the worker is currently working
+        const isWorking = this.currentlyWorking.equals(Field(1));
+
+        // If the worker was working, update worked hours and set working status to false
+        const updatedWorkedHours = Provable.if(
+            isWorking,
+            this.workedHours.add(newTime.sub(this.lastSeen)),
+            this.workedHours // No change if not working
+        );
+
+        // Update the working status: flip it (1 becomes 0, 0 becomes 1)
+        const updatedWorkingStatus = Provable.if(
+            isWorking,
+            Field(0), // If currently working, set to not working
+            Field(1)  // If not working, set to working
+        );
+
+        // Update the fields
+        this.workedHours = updatedWorkedHours;
+        this.currentlyWorking = updatedWorkingStatus;
         this.lastSeen = newTime;
     }
 }
 
-export class ClockVerifier extends GetTime{
+export class ClockVerifier extends SmartContract{
     @state(Field) treeRoot = State<Field>();
     @state(PublicKey) serverPublicKey = State<PublicKey>();
 
@@ -143,7 +156,8 @@ export class ClockVerifier extends GetTime{
         verifyServerSignature.assertTrue();
 
         // We then look for the authenticity of the oracle time stamp before going any further
-        this.verify(newTime, oracleSignature); // reverts if anything is wrong
+        const verifyOracleSignature = oracleSignature.verify(PublicKey.fromBase58(ORACLE_PUBLIC_KEY), [newTime]);
+        verifyOracleSignature.assertTrue();
 
         // Then, the contract check for the authenticity of the provided public/private data
         const currentRoot = this.treeRoot.getAndRequireEquals();

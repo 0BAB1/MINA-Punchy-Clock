@@ -9,6 +9,7 @@ import {
   MerkleTree,
   Poseidon,
   Signature,
+  Sign,
 } from 'o1js';
 
 /**
@@ -41,7 +42,8 @@ describe('ClockVerifier', () => {
     zkAppAddress: PublicKey,
     zkAppPrivateKey: PrivateKey,
     zkApp: ClockVerifier,
-    serverTree: MerkleTree;
+    serverTree: MerkleTree,
+    newWorkerStruct : Worker;
   
   // Hardcoded key pairs for simulating parties signatures for TX approvals
   const hardServerKeyPair = [ // @0 : PRIVATE / @1 : PUBLIC
@@ -69,6 +71,12 @@ describe('ClockVerifier', () => {
     zkAppAddress = zkAppPrivateKey.toPublicKey();
     zkApp = new ClockVerifier(zkAppAddress);
     serverTree = new MerkleTree(HEIGHT);
+    newWorkerStruct = new Worker({
+      workerPublicKey : PublicKey.fromBase58(hardWorkerKeyPair[1]),
+      workedHours : Field(0),
+      currentlyWorking : Field(0),
+      lastSeen : Field(0)
+    });
   });
 
   async function localDeploy() {
@@ -319,11 +327,183 @@ describe('ClockVerifier', () => {
   });
 
   describe('Core protocol functionnalities tests + tree root is synced', () => {
-    
+    // The public key of our trusted data provider
+    const ORACLE_PUBLIC_KEY =
+      'B62qjrPXot2doFFCpT228TKe6hsfGEUnRmDFoWKFo1ANCHaxtizaWKp';
+    const ORACLE_API =
+      "https://punchoracle.netlify.app/.netlify/functions/api";
+    const DEFAULT_WORKED_HOURS = Field(0);
+    const DEFAULT_WORK_STATUS = Field(0);
+    const DEFAULT_PRIVATE_TIMESTAMP = Field(0);
+    const DEFAULT_NEW_WORKER_LEAF_ID = 0n;
+
+    async function declareDummyWorker(){
+      const workerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [Field(0)]);
+      const serverSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [Field(0)]);
+      const verifyWorkerSignature = workerSignature.verify(PublicKey.fromBase58(hardWorkerKeyPair[1]), [Field(0)]);
+      expect(verifyWorkerSignature.toString()).toBe("true");
+      const allocatedWorkerLeaf = DEFAULT_NEW_WORKER_LEAF_ID;
+      const witness = new MerkleWitenessHeight(serverTree.getWitness(allocatedWorkerLeaf));
+      const tx = await Mina.transaction(senderAccount, async () => {
+        await zkApp.addWorker(
+          PublicKey.fromBase58(hardWorkerKeyPair[1]),
+          witness,
+          workerSignature,
+          serverSignature
+        );
+      });
+      await tx.prove();
+      await tx.sign([senderKey]).send();
+      serverTree.setLeaf(
+        allocatedWorkerLeaf,
+        Poseidon.hash(Worker.toFields(newWorkerStruct))
+      );
+      // console.log(serverTree.getRoot(), zkApp.treeRoot.get())
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+    }
+
+    async function punchInTX(publicWorkedHours : Field, privateLastSeen : Field, privateStatus : Field, newPrivateTime : Field,
+      oracleSignature : Signature, workerSignature : Signature, serverSignature : Signature, serverWitness : MerkleWitenessHeight
+    ){
+      const punchInTX = await Mina.transaction(senderAccount, async () => {
+        await zkApp.punchIn(
+          // public data
+          PublicKey.fromBase58(hardWorkerKeyPair[1]),
+          publicWorkedHours,
+          // private data
+          privateStatus,
+          privateLastSeen,
+          // Oracle data
+          newPrivateTime,
+          oracleSignature,
+          // parties signatures
+          workerSignature,
+          serverSignature,
+          // off-chain data witness
+          serverWitness
+        );
+      });
+      await punchInTX.prove();
+      await punchInTX.sign([senderKey]).send();
+    }
+
     it('Worker can punch-in and status changes', async () => {
+      await localDeploy();
+      await declareDummyWorker();
+      // Check that the worker was indeed declared
+      expect(zkApp.treeRoot.get() == new MerkleTree(10).getRoot()).toBe(false);
+      expect(checkSync(serverTree, new MerkleTree(10).getRoot())).toBe(false);
+      // user queries the ORACLE
+      const newPrivateTime = Field(1727967420485);
+      const oracleSignature = Signature.fromBase58(
+        '7mXEQUYNtq9Yn9EqcwLsxXvusvE26RbBMFDkNhCaFoavCtZDjKkoJxKu5nt9AT3bmzZDaQSX9FEcK7FbVkuuTK68ajQKUAEA'
+      );
+      const workerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [newPrivateTime]);
+      // This data is sent to the server, the server runs some background check before commiting to the
+      // contract computation...
+      const workerSignatureVerif = workerSignature.verify(PublicKey.fromBase58(hardWorkerKeyPair[1]), [newPrivateTime]);
+      const oracleSignatureVerif = oracleSignature.verify(PublicKey.fromBase58(ORACLE_PUBLIC_KEY), [newPrivateTime]);
+      expect(workerSignatureVerif.and(oracleSignatureVerif).toString()).toBe("true");
+      // the server then approves the TX by signing it and generating a witness of his own data to compare to the on-chain truth
+      const serverSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [newPrivateTime]);
+      const serverWitness = new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID));
+      // The server then runs the contract, in this test, it shall be successful !
+      await punchInTX(
+        DEFAULT_WORKED_HOURS,
+        DEFAULT_PRIVATE_TIMESTAMP,
+        DEFAULT_WORK_STATUS,
+        newPrivateTime,
+        oracleSignature,
+        workerSignature,
+        serverSignature,
+        serverWitness
+      );
+      // if the tx was a success, we update the off-chain data base AND the server tree accordingly
+      const updateWorker = newWorkerStruct;
+      updateWorker.punchIn(newPrivateTime);
+      serverTree.setLeaf(
+        DEFAULT_NEW_WORKER_LEAF_ID,
+        Poseidon.hash(Worker.toFields(updateWorker))
+      );
+      // run verifications on server/ chain sync
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
     });
-    it.todo('Worker can punch-in and twice and workedHours get updated');
+
+    it('Worker can punch-in and twice and all states gets updated', async () => {
+      // same start as previous test...
+      await localDeploy();
+      await declareDummyWorker();
+      expect(zkApp.treeRoot.get() == new MerkleTree(10).getRoot()).toBe(false);
+      expect(checkSync(serverTree, new MerkleTree(10).getRoot())).toBe(false);
+      const firstOrcaleTimeStamp = Field(1727967420485);
+      const fistOracleSignature = Signature.fromBase58(
+        '7mXEQUYNtq9Yn9EqcwLsxXvusvE26RbBMFDkNhCaFoavCtZDjKkoJxKu5nt9AT3bmzZDaQSX9FEcK7FbVkuuTK68ajQKUAEA'
+      );
+      const firstWorkerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [firstOrcaleTimeStamp]);
+      const firstServerSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [firstOrcaleTimeStamp]);
+      const firstServerWitness = new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID));
+      await punchInTX(
+        DEFAULT_WORKED_HOURS,
+        DEFAULT_PRIVATE_TIMESTAMP,
+        DEFAULT_WORK_STATUS,
+        firstOrcaleTimeStamp,
+        fistOracleSignature,
+        firstWorkerSignature,
+        firstServerSignature,
+        firstServerWitness
+      );
+      const updateWorker = newWorkerStruct;
+      updateWorker.punchIn(firstOrcaleTimeStamp);
+      serverTree.setLeaf(
+        DEFAULT_NEW_WORKER_LEAF_ID,
+        Poseidon.hash(Worker.toFields(updateWorker))
+      );
+
+      // send a SECOND TX !
+      // first the user requires the server to punch in...
+      const secondOracleTimeStamp = Field(1728209845708); // hardcoded values sampled from live oracle api
+      const secondOracleSignature = Signature.fromBase58("7mXD6vp5B91ThhLYkfSB8qR5Vexg39op8kwjHLAteHtUs5VKKvgjSkV51nmDbADzQjjmUWMH9jbzJtcgu1FSa3ai8GtUutwL");
+      const theoricalNewWorkedTime = secondOracleTimeStamp.sub(firstOrcaleTimeStamp);
+      const secondWorkerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [secondOracleTimeStamp]);
+      // now to the sever...
+      const secondServerSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [secondOracleTimeStamp]);
+      const secondServerWitness =  new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID));
+      expect(updateWorker.lastSeen.equals(firstOrcaleTimeStamp).toString()).toBe("true");
+      await punchInTX(
+        updateWorker.workedHours,
+        updateWorker.lastSeen,
+        updateWorker.currentlyWorking,
+        secondOracleTimeStamp,
+        secondOracleSignature,
+        secondWorkerSignature,
+        secondServerSignature,
+        secondServerWitness
+      );
+      //Verify the TX passed and data has been applied 
+      updateWorker.punchIn(secondOracleTimeStamp);
+      expect(updateWorker.workedHours.equals(theoricalNewWorkedTime).toString()).toBe("true");
+      expect(updateWorker.currentlyWorking.equals(Field(0)).toString()).toBe("true");
+      expect(updateWorker.lastSeen.equals(secondOracleTimeStamp).toString()).toBe("true");
+      expect(updateWorker.workerPublicKey.toBase58() == hardWorkerKeyPair[1]).toBe(true);
+
+      serverTree.setLeaf(
+        DEFAULT_NEW_WORKER_LEAF_ID,
+        Poseidon.hash(Worker.toFields(updateWorker))
+      );
+
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true); // chain and server synced
+      // AND chain data include new worker data
+
+      expect(
+        new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID)).calculateRoot(
+          Poseidon.hash(Worker.toFields(updateWorker))
+        ).equals(zkApp.treeRoot.get()).toString()
+      ).toBe("true");
+    });
+
     it.todo('Worker can punch-in and tree times and workedHours get updated and status changes');
+    it.todo('Worker can punch-in using actual LIVE ORACLE api calls');
+    it.todo('Worker can punch-in twice actual LIVE ORACLE api calls');
   });
 
   describe("Worker cheat preventing", () => {
