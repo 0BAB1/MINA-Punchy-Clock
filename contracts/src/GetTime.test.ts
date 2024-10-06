@@ -22,7 +22,7 @@ import {
  * oracle tests, thus making it easier to sport a fault on the oracle side.
  */
 
-interface OracleResponse {
+export interface OracleResponse {
   // The oracle API data structure afer awaiting response.json
   data: {
     time: number

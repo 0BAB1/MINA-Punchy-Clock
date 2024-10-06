@@ -1,5 +1,5 @@
 import { ClockVerifier, HEIGHT, MerkleWitenessHeight, Worker } from './ClockVerifier';
-
+import { OracleResponse } from './GetTime.test';
 import {
   Field,
   Mina,
@@ -25,8 +25,7 @@ function checkSync(
   zkAppTreeRoot : Field
 ) : boolean {
   /**
-   * Checks sync between the app and the server, called after
-   * each test is mandatory.
+   * check sync between off-chain data tree and on-chain truth
    */
   const serverRoot = serverTree.getRoot();
   return serverRoot.toString() === zkAppTreeRoot.toString();
@@ -55,6 +54,7 @@ describe('ClockVerifier', () => {
     "B62qnnMDkAXy6WQ5FoVVTehvgoPnJek8BfPgiXV5BjGsFDmKaW7mUyb"
   ];
   const networkId = 'testnet';
+  const ORACLE_API = "https://punchoracle.netlify.app/.netlify/functions/api";
 
   beforeAll(async () => {
     if (proofsEnabled) await ClockVerifier.compile();
@@ -540,8 +540,40 @@ describe('ClockVerifier', () => {
         ).equals(zkApp.treeRoot.get()).toString()
       ).toBe("true");
     });
-    it.todo('Worker can punch-in using actual LIVE ORACLE api calls');
-    it.todo('Worker can punch-in twice actual LIVE ORACLE api calls');
+    it('Worker can punch-in using actual LIVE ORACLE api calls', async () => {
+      await localDeploy();
+      await declareDummyWorker();
+      // as usual the user starts, this time by getting an actual ORACLE call
+      const response = await fetch(ORACLE_API);
+      const data : OracleResponse = await response.json();
+      const oracleTimestamp = Field(data.data.time);
+      const oracleSignature = Signature.fromBase58(data.signature);
+      const workerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [oracleTimestamp]);
+      // from now on, assert server background checks as OK as many test already covered that before
+      const serverSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [oracleTimestamp]);
+      const serverWitness = new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID));
+      // generate, prove and send TX using X (as in any) account
+      await punchInTX(
+        newWorkerStruct.workedHours, // default nb of worked hours
+        newWorkerStruct.lastSeen,    // default private initial last seen
+        newWorkerStruct.currentlyWorking, // default private inital working status
+        oracleTimestamp, // fetched time
+        oracleSignature, // signature from oracle to prove authenticity of the time stamp
+        workerSignature, // worker signature to prove worker initiated the TX
+        serverSignature, // server signature to prove server approved and acknoledged the TX
+        serverWitness // server data witness to ensure off-chain state authenticity
+      );
+      // update the server tree
+      const updateWorker = newWorkerStruct;
+      updateWorker.punchIn(oracleTimestamp);
+      serverTree.setLeaf(DEFAULT_NEW_WORKER_LEAF_ID, Poseidon.hash(Worker.toFields(updateWorker)));
+      // check sync between off-chain data and on-chain truth
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+      // check the status has been indeed applied on chain by computing a root on actual new data & check
+      expect(new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID)).calculateRoot(
+        Poseidon.hash(Worker.toFields(updateWorker))
+      ).equals(zkApp.treeRoot.get()).toString()).toBe("true");
+    });
   });
 
   describe("Worker cheat preventing", () => {
