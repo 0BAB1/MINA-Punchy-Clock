@@ -1,7 +1,8 @@
 import { method, Field, SmartContract, state, State ,Signature, PublicKey } from "o1js";
 
 /**
- * GetTime
+ * DEPRECATED, KEPT FOR TESTING THE ORACLE : GetTime
+ * 
  * This smart contract ONLY puprpose is to interact with an oracle
  * that provides the time in milliseconds as stated in :
  * https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Global_Objects/Date/now

@@ -1,4 +1,4 @@
-# PUNCHY : The privacy-driven punch clock solution
+# PUNCHY : The MINA & o1js privacy-driven punch clock solution
 
 ## Overview
 
@@ -14,7 +14,7 @@ Punchy aims at implementing the punch clock system unsing the Mina blockchain as
 ### Solution actors and stakeholders :
 - The on chain contracts
 - A dedicated oracle for authentic time stamps
-- A server to hold the data
+- A server to hold the data (for the server solution)
 - And of course : the Workers and employer that can lack trust in each other
 
 ### Main solution requirements :
@@ -29,9 +29,12 @@ Punchy aims at implementing the punch clock system unsing the Mina blockchain as
 
 ## The protocol
 
-Punchy's protocol is describe with more details here : [Contracts README file](./contracts/README.md). Here is a broad overview of how the protocol handles transaction and ensure the requirements are met :
+Punchy's protocol is describe with more details here : [Contracts README file](./contracts/README.md).
 
-![Protocole image](https://image.noelshack.com/fichiers/2024/40/6/1728111893-capture-d-cran-du-2024-10-05-09-04-03.png)
+It exists in two flavors :
+
+- A server solution for off-chain storage
+- A user individual solution for off chain storage
 
 ## The oracle
 
