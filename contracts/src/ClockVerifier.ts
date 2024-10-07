@@ -2,7 +2,8 @@ import {Provable, Poseidon, Field, SmartContract, state, State, method, MerkleTr
 import { ORACLE_PUBLIC_KEY } from './GetTime';
 
 /**
- * ClockVerifier :
+ * ClockVerifier : Centralized version
+ * 
  * Its role is to hold the truth. Public data being store on the server,
  * Modifying it requires the Worker to prove that he did not manipulate
  * his working time without tracking everything he does.

@@ -18,6 +18,12 @@ import {
  * This file tests ClockVerifier Contract functionalities
  * The worker gets and verifies his time stamp using the oracle and
  * the GetTime contract for verification.
+ * 
+ * This file also simulates server behavior, especially in the first few tests
+ * where it also simulate the server background checks.
+ * 
+ * Todo : add tests for a completely de-centralized scenario where server
+ * is also worker.
  */
 
 function checkSync(
@@ -78,6 +84,62 @@ describe('ClockVerifier', () => {
       lastSeen : Field(0)
     });
   });
+
+  const DEFAULT_NEW_WORKER_LEAF_ID = 0n;
+  // The public key of our trusted data provider
+  const ORACLE_PUBLIC_KEY =
+    'B62qjrPXot2doFFCpT228TKe6hsfGEUnRmDFoWKFo1ANCHaxtizaWKp';
+  const DEFAULT_WORKED_HOURS = Field(0);
+  const DEFAULT_WORK_STATUS = Field(0);
+  const DEFAULT_PRIVATE_TIMESTAMP = Field(0);
+
+  async function punchInTX(publicWorkedHours : Field, privateLastSeen : Field, privateStatus : Field, newPrivateTime : Field,
+    oracleSignature : Signature, workerSignature : Signature, serverSignature : Signature, serverWitness : MerkleWitenessHeight
+  ){
+    const punchInTX = await Mina.transaction(senderAccount, async () => {
+      await zkApp.punchIn(
+        // public data
+        PublicKey.fromBase58(hardWorkerKeyPair[1]),
+        publicWorkedHours,
+        // private data
+        privateStatus,
+        privateLastSeen,
+        // Oracle data
+        newPrivateTime,
+        oracleSignature,
+        // parties signatures
+        workerSignature,
+        serverSignature,
+        // off-chain data witness
+        serverWitness
+      );
+    });
+    await punchInTX.prove();
+    await punchInTX.sign([senderKey]).send();
+  }
+
+  async function declareDummyWorker(){
+    const workerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [Field(0)]);
+    const serverSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [Field(0)]);
+    const allocatedWorkerLeaf = DEFAULT_NEW_WORKER_LEAF_ID;
+    const witness = new MerkleWitenessHeight(serverTree.getWitness(allocatedWorkerLeaf));
+    const tx = await Mina.transaction(senderAccount, async () => {
+      await zkApp.addWorker(
+        PublicKey.fromBase58(hardWorkerKeyPair[1]),
+        witness,
+        workerSignature,
+        serverSignature
+      );
+    });
+    await tx.prove();
+    await tx.sign([senderKey]).send();
+    serverTree.setLeaf(
+      allocatedWorkerLeaf,
+      Poseidon.hash(Worker.toFields(newWorkerStruct))
+    );
+    // console.log(serverTree.getRoot(), zkApp.treeRoot.get())
+    expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+  }
 
   async function localDeploy() {
     const deployTxn = await Mina.transaction(deployerAccount, async () => {
@@ -327,65 +389,6 @@ describe('ClockVerifier', () => {
   });
 
   describe('Core protocol functionnalities tests + tree root is synced', () => {
-    // The public key of our trusted data provider
-    const ORACLE_PUBLIC_KEY =
-      'B62qjrPXot2doFFCpT228TKe6hsfGEUnRmDFoWKFo1ANCHaxtizaWKp';
-    const ORACLE_API =
-      "https://punchoracle.netlify.app/.netlify/functions/api";
-    const DEFAULT_WORKED_HOURS = Field(0);
-    const DEFAULT_WORK_STATUS = Field(0);
-    const DEFAULT_PRIVATE_TIMESTAMP = Field(0);
-    const DEFAULT_NEW_WORKER_LEAF_ID = 0n;
-
-    async function declareDummyWorker(){
-      const workerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [Field(0)]);
-      const serverSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [Field(0)]);
-      const verifyWorkerSignature = workerSignature.verify(PublicKey.fromBase58(hardWorkerKeyPair[1]), [Field(0)]);
-      expect(verifyWorkerSignature.toString()).toBe("true");
-      const allocatedWorkerLeaf = DEFAULT_NEW_WORKER_LEAF_ID;
-      const witness = new MerkleWitenessHeight(serverTree.getWitness(allocatedWorkerLeaf));
-      const tx = await Mina.transaction(senderAccount, async () => {
-        await zkApp.addWorker(
-          PublicKey.fromBase58(hardWorkerKeyPair[1]),
-          witness,
-          workerSignature,
-          serverSignature
-        );
-      });
-      await tx.prove();
-      await tx.sign([senderKey]).send();
-      serverTree.setLeaf(
-        allocatedWorkerLeaf,
-        Poseidon.hash(Worker.toFields(newWorkerStruct))
-      );
-      // console.log(serverTree.getRoot(), zkApp.treeRoot.get())
-      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
-    }
-
-    async function punchInTX(publicWorkedHours : Field, privateLastSeen : Field, privateStatus : Field, newPrivateTime : Field,
-      oracleSignature : Signature, workerSignature : Signature, serverSignature : Signature, serverWitness : MerkleWitenessHeight
-    ){
-      const punchInTX = await Mina.transaction(senderAccount, async () => {
-        await zkApp.punchIn(
-          // public data
-          PublicKey.fromBase58(hardWorkerKeyPair[1]),
-          publicWorkedHours,
-          // private data
-          privateStatus,
-          privateLastSeen,
-          // Oracle data
-          newPrivateTime,
-          oracleSignature,
-          // parties signatures
-          workerSignature,
-          serverSignature,
-          // off-chain data witness
-          serverWitness
-        );
-      });
-      await punchInTX.prove();
-      await punchInTX.sign([senderKey]).send();
-    }
 
     it('Worker can punch-in and status changes', async () => {
       await localDeploy();
@@ -577,38 +580,229 @@ describe('ClockVerifier', () => {
   });
 
   describe("Worker cheat preventing", () => {
-    it.todo('Worker cannot cheat on the previous time');
-    it.todo('Worker cannot cheat on the worked hours');
-    // The following has already test in the GetTime test suite but re-tested for good measure
-    it.todo('Worker cannot cheat on the new time stamp');
-    // The following has already test in the GetTime test suite but re-tested for good measure
-    it.todo('Worker cannot spoof the oracle');
-    it.todo('Worker cannot cheat on his status');
-    it.todo('Worker cannot sign for another');
-  });
+    it('Worker cannot cheat on the previous time', async () => {
+      // as usual ...
+      await localDeploy();
+      await declareDummyWorker();
+      expect(zkApp.treeRoot.get() == new MerkleTree(10).getRoot()).toBe(false);
+      expect(checkSync(serverTree, new MerkleTree(10).getRoot())).toBe(false);
+      const newPrivateTime = Field(1727967420485);
+      const oracleSignature = Signature.fromBase58(
+        '7mXEQUYNtq9Yn9EqcwLsxXvusvE26RbBMFDkNhCaFoavCtZDjKkoJxKu5nt9AT3bmzZDaQSX9FEcK7FbVkuuTK68ajQKUAEA'
+      );
+      const workerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [newPrivateTime]);
+      // We pass on server background verifications...
+      const serverSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [newPrivateTime]);
+      const serverWitness = new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID));
 
-  describe("Privacy", () => {
-    it.todo('Worker lastSeen data remains private');
-    it.todo('Worker cannot sign for another');
+      // worker tries to lie on the previous time which is private data
+      await expect(async () => {
+        await punchInTX(
+          DEFAULT_WORKED_HOURS,
+          DEFAULT_PRIVATE_TIMESTAMP.sub(Field(20)),
+          DEFAULT_WORK_STATUS,
+          newPrivateTime,
+          oracleSignature,
+          workerSignature,
+          serverSignature,
+          serverWitness
+        );
+      }).rejects.toThrow('Field.assertEquals(): 6667602444377666467746656996196652692459003284289820143394495594820908171842 != 1232402771924072454437349120462577152854228948288072408637335961482283052169');
+
+      // run verifications on server/ chain sync
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+      // check that the data on chain is still the one of an EMPTY worker with a NEW tree
+      expect(new MerkleWitenessHeight(new MerkleTree(HEIGHT).getWitness(DEFAULT_NEW_WORKER_LEAF_ID)).calculateRoot(
+        Poseidon.hash(Worker.toFields(newWorkerStruct))
+      ).equals(zkApp.treeRoot.get()).toString()).toBe("true");
+    });
+
+    it('Worker cannot cheat on the worked hours', async () => {
+      // as usual ...
+      await localDeploy();
+      await declareDummyWorker();
+      expect(zkApp.treeRoot.get() == new MerkleTree(10).getRoot()).toBe(false);
+      expect(checkSync(serverTree, new MerkleTree(10).getRoot())).toBe(false);
+      const newPrivateTime = Field(1727967420485);
+      const oracleSignature = Signature.fromBase58(
+        '7mXEQUYNtq9Yn9EqcwLsxXvusvE26RbBMFDkNhCaFoavCtZDjKkoJxKu5nt9AT3bmzZDaQSX9FEcK7FbVkuuTK68ajQKUAEA'
+      );
+      const workerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [newPrivateTime]);
+      // We pass on server background verifications...
+      const serverSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [newPrivateTime]);
+      const serverWitness = new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID));
+
+      // public worked hours were tempered with !
+      await expect(async () => {
+        await punchInTX(
+          Field(999999),
+          DEFAULT_PRIVATE_TIMESTAMP,
+          DEFAULT_WORK_STATUS,
+          newPrivateTime,
+          oracleSignature,
+          workerSignature,
+          serverSignature,
+          serverWitness
+        );
+      }).rejects.toThrow("Field.assertEquals(): 26899724248651448891995579576147811336662926104566312429887622025170079918031 != 1232402771924072454437349120462577152854228948288072408637335961482283052169");
+
+      // run verifications on server/ chain sync
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+      // check that the data on chain is still the one of an EMPTY worker with a NEW tree
+      expect(new MerkleWitenessHeight(new MerkleTree(HEIGHT).getWitness(DEFAULT_NEW_WORKER_LEAF_ID)).calculateRoot(
+        Poseidon.hash(Worker.toFields(newWorkerStruct))
+      ).equals(zkApp.treeRoot.get()).toString()).toBe("true");
+    });
+
+    // The following has already test in the GetTime test suite but re-tested for good measure
+    it('Worker cannot cheat on the new time stamp', async () => {
+      // as usual ...
+      await localDeploy();
+      await declareDummyWorker();
+      expect(zkApp.treeRoot.get() == new MerkleTree(10).getRoot()).toBe(false);
+      expect(checkSync(serverTree, new MerkleTree(10).getRoot())).toBe(false);
+      const oracleSignature = Signature.fromBase58(
+        '7mXEQUYNtq9Yn9EqcwLsxXvusvE26RbBMFDkNhCaFoavCtZDjKkoJxKu5nt9AT3bmzZDaQSX9FEcK7FbVkuuTK68ajQKUAEA'
+      );
+      const workerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [Field(9999999999999999999)]); // lies !
+      // We pass on server background verifications...
+      const serverSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [Field(9999999999999999999)]); // And the server approves !
+      const serverWitness = new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID));
+
+      // public worked hours were tempered with !
+      await expect(async () => {
+        await punchInTX(
+          DEFAULT_WORKED_HOURS,
+          DEFAULT_PRIVATE_TIMESTAMP,
+          DEFAULT_WORK_STATUS,
+          Field(9999999999999999999), // he worked a little overtime.. except no one cheats !
+          oracleSignature,
+          workerSignature,
+          serverSignature,
+          serverWitness
+        );
+      }).rejects.toThrow("Bool.assertTrue(): false != true"); // fails like this as the oracleSignature was not verified
+
+      // run verifications on server/ chain sync
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+      // check that the data on chain is still the one of an EMPTY worker with a NEW tree
+      expect(new MerkleWitenessHeight(new MerkleTree(HEIGHT).getWitness(DEFAULT_NEW_WORKER_LEAF_ID)).calculateRoot(
+        Poseidon.hash(Worker.toFields(newWorkerStruct))
+      ).equals(zkApp.treeRoot.get()).toString()).toBe("true");
+    });
+
+    it('Worker cannot cheat on his status', async () => {
+      // as usual ...
+      await localDeploy();
+      await declareDummyWorker();
+      expect(zkApp.treeRoot.get() == new MerkleTree(10).getRoot()).toBe(false);
+      expect(checkSync(serverTree, new MerkleTree(10).getRoot())).toBe(false);
+      const newPrivateTime = Field(1727967420485);
+      const oracleSignature = Signature.fromBase58(
+        '7mXEQUYNtq9Yn9EqcwLsxXvusvE26RbBMFDkNhCaFoavCtZDjKkoJxKu5nt9AT3bmzZDaQSX9FEcK7FbVkuuTK68ajQKUAEA'
+      );
+      const workerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [newPrivateTime]);
+      // We pass on server background verifications...
+      const serverSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [newPrivateTime]);
+      const serverWitness = new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID));
+
+      // public worked hours were tempered with !
+      await expect(async () => {
+        await punchInTX(
+          DEFAULT_WORKED_HOURS,
+          DEFAULT_PRIVATE_TIMESTAMP,
+          //DEFAULT_WORK_STATUS,
+          Field(1), // default is 0, let's lie on private data and say we were working !
+          newPrivateTime, // he worked a little overtime.. except no one cheats !
+          oracleSignature,
+          workerSignature,
+          serverSignature,
+          serverWitness
+        );
+      }).rejects.toThrow("Field.assertEquals(): 16400463334241760901160886919635460960287123178532167057926563873757553666745 != 1232402771924072454437349120462577152854228948288072408637335961482283052169"); // fails like this as the oracleSignature was not verified
+
+      // run verifications on server/ chain sync
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+      // check that the data on chain is still the one of an EMPTY worker with a NEW tree
+      expect(new MerkleWitenessHeight(new MerkleTree(HEIGHT).getWitness(DEFAULT_NEW_WORKER_LEAF_ID)).calculateRoot(
+        Poseidon.hash(Worker.toFields(newWorkerStruct))
+      ).equals(zkApp.treeRoot.get()).toString()).toBe("true");
+    });
+
+    it('Worker cannot punchIn for another', async () => {
+      // as usual ...
+      await localDeploy();
+      await declareDummyWorker();
+      expect(zkApp.treeRoot.get() == new MerkleTree(10).getRoot()).toBe(false);
+      expect(checkSync(serverTree, new MerkleTree(10).getRoot())).toBe(false);
+      const newPrivateTime = Field(1727967420485);
+      const oracleSignature = Signature.fromBase58(
+        '7mXEQUYNtq9Yn9EqcwLsxXvusvE26RbBMFDkNhCaFoavCtZDjKkoJxKu5nt9AT3bmzZDaQSX9FEcK7FbVkuuTK68ajQKUAEA'
+      );
+      const workerSignature = Signature.create(PrivateKey.fromBase58(senderKey.toBase58()), [newPrivateTime]); // radnom account signs the PK
+      // We pass on server background verifications...
+      const serverSignature = Signature.create(PrivateKey.fromBase58(hardServerKeyPair[0]), [newPrivateTime]); 
+      const serverWitness = new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID));
+
+      // public worked hours were tempered with !
+      await expect(async () => {
+        await punchInTX(
+          DEFAULT_WORKED_HOURS,
+          DEFAULT_PRIVATE_TIMESTAMP,
+          DEFAULT_WORK_STATUS,
+          newPrivateTime, // he worked a little overtime.. except no one cheats !
+          oracleSignature,
+          workerSignature,
+          serverSignature,
+          serverWitness
+        );
+      }).rejects.toThrow(""); // error for non consistent signatures
+
+      // run verifications on server/ chain sync
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+      // check that the data on chain is still the one of an EMPTY worker with a NEW tree
+      expect(new MerkleWitenessHeight(new MerkleTree(HEIGHT).getWitness(DEFAULT_NEW_WORKER_LEAF_ID)).calculateRoot(
+        Poseidon.hash(Worker.toFields(newWorkerStruct))
+      ).equals(zkApp.treeRoot.get()).toString()).toBe("true");
+    });
   });
 
   describe("Server approval, avoid breaking the app sync", () => {
-    it.todo('The TX does not go through if the server did not approve the TX');
-    it.todo('The TX does not go through if the server was spoofed');
-  });
+    it('The TX does not go through if the server did not approve the TX / spoofed', async () => {
+      // as usual ...
+      await localDeploy();
+      await declareDummyWorker();
+      expect(zkApp.treeRoot.get() == new MerkleTree(10).getRoot()).toBe(false);
+      expect(checkSync(serverTree, new MerkleTree(10).getRoot())).toBe(false);
+      const newPrivateTime = Field(1727967420485);
+      const oracleSignature = Signature.fromBase58(
+        '7mXEQUYNtq9Yn9EqcwLsxXvusvE26RbBMFDkNhCaFoavCtZDjKkoJxKu5nt9AT3bmzZDaQSX9FEcK7FbVkuuTK68ajQKUAEA'
+      );
+      const workerSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [newPrivateTime]); // radnom account signs the PK
+      // We pass on server background verifications...
+      const serverSignature = Signature.create(PrivateKey.fromBase58(hardWorkerKeyPair[0]), [newPrivateTime]); // lets say the worker tries to bypass and signs
+      const serverWitness = new MerkleWitenessHeight(serverTree.getWitness(DEFAULT_NEW_WORKER_LEAF_ID));
 
-  describe("Server data sync checks using server API endpoint", () => {
-    it.todo('The initialization (hiring) of a newworker does init a default entry in the server DB');
-    it.todo('A TX does update the worker\'s status on the server DB');
-    it.todo('A faulty/reversed TX does NOT update the worker\'s status on the server DB');
-  });
+      // public worked hours were tempered with !
+      await expect(async () => {
+        await punchInTX(
+          DEFAULT_WORKED_HOURS,
+          DEFAULT_PRIVATE_TIMESTAMP,
+          DEFAULT_WORK_STATUS,
+          newPrivateTime, // he worked a little overtime.. except no one cheats !
+          oracleSignature,
+          workerSignature,
+          serverSignature,
+          serverWitness
+        );
+      }).rejects.toThrow("Bool.assertTrue(): false != true"); // error for non consistent signatures
 
-  describe("Actual server tests", () => {
-    it.todo('Worker cannot cheat for creation and no computation does of Worker cheats on his signature');
-    it.todo('Worker cannot cheat for update and no computation does of Worker cheats on his signature');
-    it.todo('TX does not go through if the server tries tempering with incomming worker data in case of server being taken over.');
-    it.todo('TX does not go through if someone tries to spoof the server.');
-    it.todo('server held public statesare NOT updated if a TX does not goes though');
-    it.todo('Worker can\'t be decalred if worker\'s public key is already in the public data, no matter the leaf'); // requires an implemented DB
+      // run verifications on server/ chain sync
+      expect(checkSync(serverTree, zkApp.treeRoot.get())).toBe(true);
+      // check that the data on chain is still the one of an EMPTY worker with a NEW tree
+      expect(new MerkleWitenessHeight(new MerkleTree(HEIGHT).getWitness(DEFAULT_NEW_WORKER_LEAF_ID)).calculateRoot(
+        Poseidon.hash(Worker.toFields(newWorkerStruct))
+      ).equals(zkApp.treeRoot.get()).toString()).toBe("true");
+    });
   });
 });
