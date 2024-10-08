@@ -9,9 +9,7 @@ hours to emit a paycheck.
 
 Punchy aims at implementing the punch clock system unsing the Mina blockchain as a trust party.
 
-## Two solutions
-
-### Server off-chain storage 
+## Server off-chain storage 
 
 A first solution implies a public storage server that **has to be in sync with the chain**, meaning he has to
 approve (via signature) the transactions made to the chaian and relay the private data, thus implying a degree
@@ -22,20 +20,7 @@ Pros :
 - No need for proving transactions
 
 Cons :
-- Degree of trust needed (Orcale level)
-
-### User off-chain storage  (Work in progress)
-
-A second Contract, built for decentralized appication allow th user to prove its worked hours as described 
-further below. This application of the protocol is still in a "Work In progress" status.
-
-Pros :
-- 0 trust needed
-
-Cons :
-- The user needs to prove the public states
-
-## Server off-chain storage protocol description
+- Degree of trust needed in the server (Orcale level)
 
 ### Overview of a transaction's lifetime
 
@@ -121,27 +106,6 @@ Worker through the use of the oracle.
 
 > Note : the oracle public public is hardcoded a a single server is trusted, if you deploy your own oracle, you
 will have to regenerate a key pair and hardcode the public when deploying.
-
-## User off-chain storage protocol description (TODO)
-
-![protocol description](https://image.noelshack.com/fichiers/2024/41/1/1728305823-capture-d-cran-du-2024-10-07-14-56-46.png)
-
-Create a "Check State" contract for a fully decentralized system.
-
-The purpose of this contract is to enable verification of public data, such as workedHours and publicKey, ensuring their validity.
-
-The contract will operate by comparing two sets of data:
-
-- Public data (e.g., workedHours), which is signed by the entity requesting the verification.
-- Private data, provided off-chain by the worker, which includes details necessary to recreate the worker's struct.
-
-The contract will then:
-
-- Verify the authenticity of the employer's signature on the public data.
-- Compare a witness of the off-chain state (the public data) with the private data provided by the worker.
-- If the transaction is successful, it proves to the employer that the reported workedHours associated with the worker’s publicKey are legitimate.
-
-This design ensures that private data never leaves the worker's machine, maintaining privacy and minimizing trust assumptions, while still enabling public verifiability of key data points.
 
 # Commands
 

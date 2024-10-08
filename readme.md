@@ -31,11 +31,6 @@ Punchy aims at implementing the punch clock system unsing the Mina blockchain as
 
 Punchy's protocol is describe with more details here : [Contracts README file](./contracts/README.md).
 
-It exists in two flavors :
-
-- A server solution for off-chain storage
-- A user individual solution for off chain storage
-
 ## The oracle
 
 Find the oracle's github [here](https://github.com/0BAB1/punchy-oracle).
